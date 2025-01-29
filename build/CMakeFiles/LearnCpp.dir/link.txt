@@ -1,0 +1,3 @@
+"D:\Program Files\CMake\bin\cmake.exe" -E rm -f CMakeFiles\LearnCpp.dir/objects.a
+D:\msys64\mingw64\bin\ar.exe qc CMakeFiles\LearnCpp.dir/objects.a @CMakeFiles\LearnCpp.dir\objects1.rsp
+D:\msys64\mingw64\bin\g++.exe -g -Wl,--whole-archive CMakeFiles\LearnCpp.dir/objects.a -Wl,--no-whole-archive -o C:\Users\lixxl\Thread-Pool\bin\LearnCpp.exe -Wl,--out-implib,libLearnCpp.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\LearnCpp.dir\linkLibs.rsp

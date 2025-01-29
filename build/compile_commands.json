@@ -1,0 +1,8 @@
+[
+{
+  "directory": "C:/Users/lixxl/Thread-Pool/build",
+  "command": "D:\\msys64\\mingw64\\bin\\g++.exe  @CMakeFiles/LearnCpp.dir/includes_CXX.rsp -g -std=gnu++20 -o CMakeFiles\\LearnCpp.dir\\src\\example.cpp.obj -c C:\\Users\\lixxl\\Thread-Pool\\src\\example.cpp",
+  "file": "C:/Users/lixxl/Thread-Pool/src/example.cpp",
+  "output": "CMakeFiles/LearnCpp.dir/src/example.cpp.obj"
+}
+]
