@@ -49,7 +49,7 @@ ThreadPool::~ThreadPool()
         m_IsStop = true;
     }
 
-    m_ConditionVariable.notify_all(); // 同志所有阻塞中的线程
+    m_ConditionVariable.notify_all(); // 通知所有阻塞中的线程
 
     for (std::thread& thread : m_Threads) // 将所有线程加入到主线程中
     {
