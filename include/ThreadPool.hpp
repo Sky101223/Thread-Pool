@@ -1,13 +1,14 @@
 #ifndef THREAD_POOL_HPP
 #define THREAD_POOL_HPP
 
-#include <iostream>
-#include <thread>
-#include <mutex>
-#include <future>
+#include <atomic>
 #include <condition_variable>
 #include <functional>
+#include <future>
+#include <iostream>
 #include <queue>
+#include <thread>
+#include <mutex>
 
 // 线程池
 class ThreadPool
@@ -15,25 +16,36 @@ class ThreadPool
 public:
     ThreadPool(int32_t _threadNumbers); // 构造函数
 
+    // 添加任务到队列中
     template <typename Function, typename ...Arg>
-    auto addTask(Function&& _function, Arg&&... _arg) // 添加任务到队列中
-        -> std::future<typename std::result_of<Function(Arg...)>::type>;
+    auto commit(Function&& _function, Arg&&... _args)
+        -> std::future<decltype(_function(_args...))>;
+
+    // 禁止拷贝
+    ThreadPool(const ThreadPool&) = delete;
+    ThreadPool& operator=(const ThreadPool&) = delete;
+
+    // 获取空闲线程数量
+    int32_t getIdleThreadCount() const;
 
     ~ThreadPool(); // 析构函数
 private:
     void functionTask(void); // 线程的执行内容
-    bool m_IsStop; // 停止标识，当前线程是否停止（true/false）
+    std::atomic_bool m_Stop; // 停止标识，当前线程是否停止（true/false）
+    std::atomic_int32_t m_ThreadNum; // 空闲线程的数量
     std::condition_variable m_ConditionVariable; // 条件变量
     std::mutex m_MutexLock; // 互斥锁
-    std::vector<std::thread> m_Threads; // 线程集合，即线程池
+    std::vector<std::thread> m_Pool; // 线程集合，即线程池
     std::queue<std::function<void(void)>> m_TaskQueue; // 任务队列
 };
 
-ThreadPool::ThreadPool(int32_t _threadNumbers) : m_IsStop(false)
+ThreadPool::ThreadPool(int32_t _threadNumbers) : m_Stop(false)
 {
-    for (size_t i = 0; i < _threadNumbers; ++i)
+    if (_threadNumbers < 1) { m_ThreadNum = 1; }
+    else { m_ThreadNum = _threadNumbers; }
+    for (size_t i = 0; i < m_ThreadNum; ++i)
     {
-        m_Threads.emplace_back(
+        m_Pool.emplace_back(
             [this] {
                 this->functionTask();
             }
@@ -43,30 +55,33 @@ ThreadPool::ThreadPool(int32_t _threadNumbers) : m_IsStop(false)
 
 ThreadPool::~ThreadPool()
 {
-    // 更改停止标识
-    {
-        std::unique_lock<std::mutex>(m_MutexLock);
-        m_IsStop = true;
-    }
+    m_Stop.store(true); // 更改停止标识
 
     m_ConditionVariable.notify_all(); // 通知所有阻塞中的线程
 
-    for (std::thread& thread : m_Threads) // 将所有线程加入到主线程中
+    for (std::thread& thread : m_Pool) // 将所有线程加入到主线程中
     {
-        thread.join();
+        if (thread.joinable())
+        {
+            std::cout << "Join Thread " << thread.get_id() << std::endl;
+            thread.join();
+        }
     }
 }
 
 template <typename Function, typename ...Arg>
-auto ThreadPool::addTask(Function&& _function, Arg&&... _arg)
--> std::future<typename std::result_of<Function(Arg...)>::type>
+auto ThreadPool::commit(Function&& _function, Arg&&... _args)
+-> std::future<decltype(_function(_args...))>
 {
-    using functionType = typename std::result_of<Function(Arg...)>::type;
+    using functionType = decltype(_function(_args...));
+
+    if (m_Stop.load())
+        return std::future<functionType>{};
 
     // 共享指针，指向一个被包装为functionType(void)的task
     std::shared_ptr<std::packaged_task<functionType(void)>>
         task = std::make_shared<std::packaged_task<functionType(void)>>(
-            std::bind(std::forward<Function>(_function), std::forward<Arg>(_arg)...)
+            std::bind(std::forward<Function>(_function), std::forward<Arg>(_args)...)
         );
 
     std::future<functionType> resultFuture = task->get_future(); // 获取future
@@ -74,9 +89,9 @@ auto ThreadPool::addTask(Function&& _function, Arg&&... _arg)
     // 将任务添加到队列中
     {
         std::lock_guard<std::mutex> lockGuard(this->m_MutexLock);
-        if (m_IsStop)
+        if (m_Stop)
         {
-            throw std::runtime_error("出错：线程池已经停止了");
+            throw std::runtime_error("Error: Thread pool has stopped!");
         }
 
         m_TaskQueue.emplace([task] { // 添加任务至队列
@@ -89,6 +104,11 @@ auto ThreadPool::addTask(Function&& _function, Arg&&... _arg)
     return resultFuture; // 返回结果
 }
 
+int32_t ThreadPool::getIdleThreadCount() const
+{
+    return m_ThreadNum;
+}
+
 void ThreadPool::functionTask(void)
 {
     while (true)
@@ -99,15 +119,18 @@ void ThreadPool::functionTask(void)
         {
             std::unique_lock<std::mutex> localLock(m_MutexLock);
             // 如果停止标识为true或者任务队列为空，那么阻塞当前任务
-            m_ConditionVariable.wait(localLock, [this] { return this->m_IsStop || !this->m_TaskQueue.empty(); });
+            m_ConditionVariable.wait(localLock, [this] { return this->m_Stop.load()
+                || !this->m_TaskQueue.empty(); });
             // 如果条件成立，则中止当前任务
-            if (m_IsStop && m_TaskQueue.empty()) { return; }
+            if (m_Stop.load() && m_TaskQueue.empty()) { return; }
             // 获取并弹出任务
             task = std::move(this->m_TaskQueue.front());
             this->m_TaskQueue.pop();
         }
 
+        this->m_ThreadNum--;
         task(); // 执行
+        this->m_ThreadNum++;
     }
 }
 
