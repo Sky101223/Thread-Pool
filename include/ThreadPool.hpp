@@ -63,15 +63,16 @@ ThreadPool::~ThreadPool()
     {
         if (thread.joinable())
         {
+#ifdef JOIN_MESSAGE // 是否启用加入到主线程的信息
             std::cout << "Join Thread " << thread.get_id() << std::endl;
+#endif
             thread.join();
         }
     }
 }
 
 template <typename Function, typename ...Arg>
-auto ThreadPool::commit(Function&& _function, Arg&&... _args)
--> std::future<decltype(_function(_args...))>
+auto ThreadPool::commit(Function&& _function, Arg&&... _args) -> std::future<decltype(_function(_args...))>
 {
     using functionType = decltype(_function(_args...));
 
